@@ -179,16 +179,21 @@ class TetrisRLEnv(gym.Env):
 
         cleared = lines_after - lines_before
 
-        # --- reward shaping (phase 1: learn survival) ---
+       # --- reward shaping (phase 2: quality) ---
         reward = 0.0
-        reward += cleared * 5.0      # strong positive for clears
-        reward += 0.2                # survival bonus per placement
+        reward += cleared * 8.0      # still strong
+        reward += 0.2                # survival bonus
+
+        # gentle quality shaping (small!)
+        reward -= holes_after * 0.02
+        reward -= maxh_after * 0.01
 
         terminated = self.engine.state.game_over
         truncated = False
 
         if terminated:
-            reward -= 10.0           # dying is bad
+            reward -= 10.0
+
 
         return self._obs(), reward, terminated, truncated, {}
 
