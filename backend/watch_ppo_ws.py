@@ -37,7 +37,7 @@ async def broadcast(payload: dict):
 
 async def main():
     print("Loading model...")
-    model = PPO.load("models/ppo_tetris")
+    model = PPO.load("models/ppo_tetris_phase2")
     env = TetrisRLEnv(frames_per_step=6)
 
     print("WebSocket server running on ws://localhost:8765")
