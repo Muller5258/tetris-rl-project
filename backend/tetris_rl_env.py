@@ -174,6 +174,7 @@ class TetrisRLEnv(gym.Env):
         board_after = self.engine.state.board
         holes_after = count_holes(board_after)
         heights_after = column_heights(board_after)
+        bump_after = bumpiness(heights_after)
         maxh_after = max(heights_after) if heights_after else 0
         lines_after = self.engine.state.lines
 
@@ -181,12 +182,22 @@ class TetrisRLEnv(gym.Env):
 
        # --- reward shaping (phase 2: quality) ---
         reward = 0.0
-        reward += cleared * 8.0      # still strong
         reward += 0.2                # survival bonus
+        
+        # multi-line clear bonus
+        if cleared == 1:
+            reward += 8.0
+        elif cleared == 2:
+            reward += 20.0
+        elif cleared == 3:
+            reward += 35.0
+        elif cleared >= 4:
+            reward += 55.0     
 
-        # gentle quality shaping (small!)
+        # gentle quality shaping 
         reward -= holes_after * 0.02
         reward -= maxh_after * 0.01
+        reward -= bump_after * 0.002
 
         terminated = self.engine.state.game_over
         truncated = False
