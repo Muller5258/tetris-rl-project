@@ -188,16 +188,16 @@ class TetrisRLEnv(gym.Env):
         if cleared == 1:
             reward += 8.0
         elif cleared == 2:
-            reward += 20.0
+            reward += 18.0
         elif cleared == 3:
-            reward += 35.0
+            reward += 30.0
         elif cleared >= 4:
-            reward += 55.0     
+            reward += 45.0     
 
         # gentle quality shaping 
         reward -= holes_after * 0.02
         reward -= maxh_after * 0.01
-        reward -= bump_after * 0.002
+        reward -= bump_after * 0.001
 
         terminated = self.engine.state.game_over
         truncated = False
