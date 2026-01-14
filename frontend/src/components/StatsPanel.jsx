@@ -71,10 +71,17 @@ export default function StatsPanel({
 
         <div>
           <div style={{ opacity: 0.7, fontSize: 12 }}>Reward</div>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>
-            {reward ?? "-"}
-          </div>
+               <div
+               style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: reward > 0 ? "#3fb950" : reward < 0 ? "#f85149" : "#fff",
+               }}
+               >
+               {reward !== null && reward !== undefined ? reward.toFixed(3) : "-"}
+               </div>
         </div>
+
 
         <div>
           <div style={{ opacity: 0.7, fontSize: 12 }}>Next Piece</div>
