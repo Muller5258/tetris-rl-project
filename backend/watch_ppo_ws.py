@@ -44,23 +44,31 @@ async def main():
     async with websockets.serve(handler, "localhost", 8765):
 
         obs, _ = env.reset()
+        episode = 0
+        step = 0
         while True:
             # model chooses action
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, done, truncated, _ = env.step(int(action))
+            step += 1
 
             # send state to UI
             await broadcast({
                 "type": "state",
                 "board": env.engine.to_render_board(),
                 "score": env.engine.state.score,
+                "lines": env.engine.state.lines,
                 "nextPiece": env.engine.state.next_piece_id,
                 "gameOver": env.engine.state.game_over,
                 "aiAction": int(action),
                 "reward": float(reward),
+                "episode": episode,
+                "step": step,
             })
 
             if done or truncated:
+                episode += 1
+                step = 0
                 await asyncio.sleep(0.8)
                 obs, _ = env.reset()
 
