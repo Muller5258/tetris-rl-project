@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import TetrisBoard from "./components/TetrisBoard";
 import StatsPanel from "./components/StatsPanel";
+import RewardChart from "./components/RewardChart";
+
 
 const emptyBoard = () => Array.from({ length: 20 }, () => Array(10).fill(0));
 
@@ -16,6 +18,9 @@ export default function App() {
   const [episode, setEpisode] = useState(0);
   const [step, setStep] = useState(0);
   const [gameOver, setGameOver] = useState(false);
+
+  const [history, setHistory] = useState([]); // { step, reward, score, lines }
+
 
   useEffect(() => {
     const ws = new WebSocket("ws://localhost:8765");
@@ -41,6 +46,21 @@ export default function App() {
         if (data.lines !== undefined) setLines(data.lines);
         if (data.nextPiece !== undefined) setNextPiece(data.nextPiece);
         if (data.gameOver !== undefined) setGameOver(data.gameOver);
+      }
+      if (data.reward !== undefined && data.step !== undefined) {
+        setHistory((prev) => {
+          const next = [
+            ...prev,
+            {
+              step: data.step,
+              reward: data.reward,
+              score: data.score ?? score,
+              lines: data.lines ?? lines,
+            },
+          ];
+          // keep last 200 points
+          return next.slice(-200);
+        });
       }
     };
 
@@ -89,6 +109,7 @@ export default function App() {
           alignItems: "start",
         }}
       >
+        <div style={{ display: "grid", gap: 12 }}></div>
         <StatsPanel
           status={status}
           score={score}
@@ -100,6 +121,10 @@ export default function App() {
           nextPiece={nextPiece}
           gameOver={gameOver}
         />
+        <div style={{ marginTop: 12 }}>
+          <RewardChart history={history} />
+        </div>
+        
 
         <div>
           <TetrisBoard board={board} />
