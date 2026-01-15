@@ -1,7 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import TetrisBoard from "./components/TetrisBoard";
 import StatsPanel from "./components/StatsPanel";
 import RewardChart from "./components/RewardChart";
+import LinesChart from "./components/LinesChart";
+import EpisodeRewardChart from "./components/EpisodeRewardChart";
+
+
 
 
 const emptyBoard = () => Array.from({ length: 20 }, () => Array(10).fill(0));
@@ -20,7 +24,13 @@ export default function App() {
   const [gameOver, setGameOver] = useState(false);
 
   const [history, setHistory] = useState([]); // { step, reward, score, lines }
-
+  const [episodeHistory, setEpisodeHistory] = useState([]); // { episode, totalReward, lines }
+  
+  const episodeRewardRef = useRef(0);
+  const lastChartUpdateRef = useRef(0);
+  const lastEpisodeRef = useRef(0);
+  const episodeStartLinesRef = useRef(0);
+  const episodeMaxLinesRef = useRef(0);
 
   useEffect(() => {
     const ws = new WebSocket("ws://localhost:8765");
@@ -31,15 +41,55 @@ export default function App() {
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      setStatus("Connected");
 
-      // optional AI telemetry
+      // ────────────────────────────────
+      // EPISODE CHANGE = FINALIZE PREVIOUS EPISODE
+      // ────────────────────────────────
+      if (data.episode !== undefined && data.episode !== lastEpisodeRef.current) {
+        const episodeLinesCleared = episodeMaxLinesRef.current - episodeStartLinesRef.current;
+
+        setEpisodeHistory((prev) => [
+          ...prev.slice(-100),
+          {
+            episode: lastEpisodeRef.current,
+            totalReward: episodeRewardRef.current,
+            lines: episodeLinesCleared,
+          },
+        ]);
+
+        // reset accumulators for new episode
+        episodeRewardRef.current = 0;
+        episodeStartLinesRef.current = 0;
+        episodeMaxLinesRef.current = 0;
+
+        lastEpisodeRef.current = data.episode;
+      }
+
+      // ────────────────────────────────
+      // TELEMETRY
+      // ────────────────────────────────
       if (data.aiAction !== undefined) setAiAction(data.aiAction);
       if (data.reward !== undefined) setReward(data.reward);
       if (data.episode !== undefined) setEpisode(data.episode);
       if (data.step !== undefined) setStep(data.step);
       if (data.gameOver !== undefined) setGameOver(data.gameOver);
 
-      // main state updates
+      // accumulate reward for this episode
+      if (data.reward !== undefined) {
+        episodeRewardRef.current += data.reward;
+      }
+
+      // track max cumulative lines in this episode
+      if (data.lines !== undefined) {
+        if (data.lines > episodeMaxLinesRef.current) {
+          episodeMaxLinesRef.current = data.lines;
+        }
+      }
+
+      // ────────────────────────────────
+      // MAIN GAME STATE
+      // ────────────────────────────────
       if (data.type === "state") {
         if (data.board) setBoard(data.board);
         if (data.score !== undefined) setScore(data.score);
@@ -47,20 +97,28 @@ export default function App() {
         if (data.nextPiece !== undefined) setNextPiece(data.nextPiece);
         if (data.gameOver !== undefined) setGameOver(data.gameOver);
       }
+
+      // ────────────────────────────────
+      // CHART HISTORY (THROTTLED)
+      // ────────────────────────────────
       if (data.reward !== undefined && data.step !== undefined) {
-        setHistory((prev) => {
-          const next = [
-            ...prev,
-            {
-              step: data.step,
-              reward: data.reward,
-              score: data.score ?? score,
-              lines: data.lines ?? lines,
-            },
-          ];
-          // keep last 200 points
-          return next.slice(-200);
-        });
+        const now = performance.now();
+        if (now - lastChartUpdateRef.current > 100) { // 10 FPS charts
+          lastChartUpdateRef.current = now;
+
+          setHistory((prev) => {
+            const next = [
+              ...prev,
+              {
+                step: data.step,
+                reward: data.reward,
+                score: data.score ?? score,
+                lines: data.lines ?? lines,
+              },
+            ];
+            return next.slice(-200);
+          });
+        }
       }
     };
 
@@ -109,7 +167,7 @@ export default function App() {
           alignItems: "start",
         }}
       >
-        <div style={{ display: "grid", gap: 12 }}></div>
+        <div style={{ display: "grid", gap: 12 }}>
         <StatsPanel
           status={status}
           score={score}
@@ -121,10 +179,20 @@ export default function App() {
           nextPiece={nextPiece}
           gameOver={gameOver}
         />
-        <div style={{ marginTop: 12 }}>
+        <div style={{display: "grid", gap: 12  }}>
           <RewardChart history={history} />
+          <LinesChart history={history} />
+          <EpisodeRewardChart data={episodeHistory} />
+          <div style={{ fontSize: 12, opacity: 0.8 }}>
+            episodeHistory points: {episodeHistory.length}{" "}
+            | last:{" "}
+            {episodeHistory.length
+              ? `${episodeHistory[episodeHistory.length - 1].totalReward.toFixed(2)} (lines ${episodeHistory[episodeHistory.length - 1].lines})`
+              : "-"}
+          </div>
+
         </div>
-        
+        </div>
 
         <div>
           <TetrisBoard board={board} />
