@@ -204,7 +204,6 @@ class TetrisRLEnv(gym.Env):
 
         if terminated:
             reward -= 10.0
-
-
+            
         return self._obs(), reward, terminated, truncated, {}
 

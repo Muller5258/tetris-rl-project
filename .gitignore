@@ -13,3 +13,7 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# RL logs
+backend/logs/
+*.csv
