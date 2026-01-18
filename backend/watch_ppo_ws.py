@@ -3,6 +3,7 @@ import json
 import websockets
 import argparse
 import time
+import os
 
 from stable_baselines3 import PPO
 from tetris_rl_env import TetrisRLEnv
@@ -11,15 +12,27 @@ from csv_logger import CSVLogger
 from datetime import datetime
 
 CLIENTS = set()
+CURRENT_FPS = GRAVITY_FPS
 
 async def handler(websocket):
+    global CURRENT_FPS
     CLIENTS.add(websocket)
     print("Client connected!")
     try:
-        await websocket.wait_closed()
+        async for message in websocket:
+            try:
+                data = json.loads(message)
+            except:
+                continue
+
+            if data.get("type") == "config":
+                fps = data.get("fps")
+                if isinstance(fps, (int, float)) and 1 <= fps <= 120:
+                    CURRENT_FPS = float(fps)
     finally:
         CLIENTS.discard(websocket)
         print("Client disconnected!")
+
 
 async def broadcast(payload: dict):
     if not CLIENTS:
@@ -42,6 +55,13 @@ async def main():
     parser.add_argument("--flush-every", type=int, default=200)
     args = parser.parse_args()
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join("logs", "runs", run_id)
+    os.makedirs(run_dir, exist_ok=True)
+
+    args.log_steps = os.path.join(run_dir, "steps.csv")
+    args.log_episodes = os.path.join(run_dir, "episodes.csv")
+
+    print("Logging to:", run_dir)
 
 
     steps_logger = CSVLogger(
@@ -126,7 +146,7 @@ async def main():
                     obs, _ = env.reset()
 
                 # real-time speed (roughly)
-                await asyncio.sleep(1.0 / GRAVITY_FPS)
+                await asyncio.sleep(1.0 / max(1.0, CURRENT_FPS))
 
         finally:
             steps_logger.close()
