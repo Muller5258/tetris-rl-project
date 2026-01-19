@@ -34,8 +34,22 @@ def load_episodes_csv(path: str) -> pd.DataFrame:
     return df
 
 
-def save_plots(df: pd.DataFrame, out_dir: str, ma: int, label: str) -> None:
+def save_plots(df: pd.DataFrame, out_dir: str, ma: int, label: str, xaxis: str = "episode") -> None:
     ensure_dir(out_dir)
+
+    df = df.copy()
+
+    # Choose x-axis
+    if xaxis == "time":
+        if "wall_time" not in df.columns:
+            raise ValueError("wall_time column missing; cannot use --xaxis time")
+        t0 = float(df["wall_time"].iloc[0])
+        df["t_min"] = (df["wall_time"] - t0) / 60.0
+        x = df["t_min"]
+        xlabel = "Minutes since run start"
+    else:
+        x = df["episode"]
+        xlabel = "Episode"
 
     df["reward_ma"] = moving_avg(df["total_reward"], ma)
     df["lines_ma"] = moving_avg(df["lines"], ma)
@@ -44,10 +58,10 @@ def save_plots(df: pd.DataFrame, out_dir: str, ma: int, label: str) -> None:
 
     # Reward
     plt.figure()
-    plt.plot(df["episode"], df["total_reward"])
-    plt.plot(df["episode"], df["reward_ma"])
+    plt.plot(x, df["total_reward"], alpha=0.25)
+    plt.plot(x, df["reward_ma"])
     plt.title(f"Episode Reward {label} (MA={ma})")
-    plt.xlabel("Episode")
+    plt.xlabel(xlabel)
     plt.ylabel("Total reward")
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, "reward.png"))
@@ -55,10 +69,10 @@ def save_plots(df: pd.DataFrame, out_dir: str, ma: int, label: str) -> None:
 
     # Lines
     plt.figure()
-    plt.plot(df["episode"], df["lines"])
-    plt.plot(df["episode"], df["lines_ma"])
+    plt.plot(x, df["lines"], alpha=0.25)
+    plt.plot(x, df["lines_ma"])
     plt.title(f"Lines per Episode {label} (MA={ma})")
-    plt.xlabel("Episode")
+    plt.xlabel(xlabel)
     plt.ylabel("Lines")
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, "lines.png"))
@@ -66,10 +80,10 @@ def save_plots(df: pd.DataFrame, out_dir: str, ma: int, label: str) -> None:
 
     # Score
     plt.figure()
-    plt.plot(df["episode"], df["score"])
-    plt.plot(df["episode"], df["score_ma"])
+    plt.plot(x, df["score"], alpha=0.25)
+    plt.plot(x, df["score_ma"])
     plt.title(f"Score per Episode {label} (MA={ma})")
-    plt.xlabel("Episode")
+    plt.xlabel(xlabel)
     plt.ylabel("Score")
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, "score.png"))
@@ -77,15 +91,14 @@ def save_plots(df: pd.DataFrame, out_dir: str, ma: int, label: str) -> None:
 
     # Steps
     plt.figure()
-    plt.plot(df["episode"], df["steps"])
-    plt.plot(df["episode"], df["steps_ma"])
+    plt.plot(x, df["steps"], alpha=0.25)
+    plt.plot(x, df["steps_ma"])
     plt.title(f"Steps per Episode {label} (MA={ma})")
-    plt.xlabel("Episode")
+    plt.xlabel(xlabel)
     plt.ylabel("Steps")
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, "steps.png"))
     plt.close()
-
 
 def summarize_run(df: pd.DataFrame) -> dict:
     return {
@@ -97,18 +110,131 @@ def summarize_run(df: pd.DataFrame) -> dict:
         "avg_score": float(df["score"].mean()),
         "max_score": int(df["score"].max()),
     }
+def build_summary_table(runs_root: str) -> pd.DataFrame:
+    runs = list_runs(runs_root)
+    rows = []
+    for rid in runs:
+        ep_path = os.path.join(runs_root, rid, "episodes.csv")
+        if not os.path.exists(ep_path):
+            continue
+        df = load_episodes_csv(ep_path)
+        if df.empty:
+            continue
+        s = summarize_run(df)
+        s["run_id"] = rid
+        rows.append(s)
+
+    if not rows:
+        return pd.DataFrame()
+
+    out = pd.DataFrame(rows)
+    out = out.sort_values(["avg_lines", "max_lines", "avg_score"], ascending=False).reset_index(drop=True)
+    return out
+
+
+def plot_compare_runs(
+    runs_root: str,
+    out_dir: str,
+    ma: int,
+    metric: str,
+    top_k: int,
+    xaxis: str = "episode",
+) -> None:
+    ensure_dir(out_dir)
+
+    summary = build_summary_table(runs_root)
+    if summary.empty:
+        print("No runs to compare.")
+        return
+
+    # choose top K runs by avg_lines primarily (already sorted)
+    chosen = summary.head(top_k)["run_id"].tolist()
+
+    plt.figure()
+    for rid in chosen:
+        ep_path = os.path.join(runs_root, rid, "episodes.csv")
+        df = load_episodes_csv(ep_path)
+        if df.empty:
+            continue
+
+        if metric == "reward":
+            y = df["total_reward"]
+            y_ma = moving_avg(y, ma)
+            ylabel = "Total reward"
+        elif metric == "score":
+            y = df["score"]
+            y_ma = moving_avg(y, ma)
+            ylabel = "Score"
+        else:
+            y = df["lines"]
+            y_ma = moving_avg(y, ma)
+            ylabel = "Lines"
+
+        # MA line only (cleaner than raw)
+        if xaxis == "time":
+            if "wall_time" not in df.columns:
+                continue
+            t0 = float(df["wall_time"].iloc[0])
+            x = (df["wall_time"] - t0) / 60.0
+            xlabel = "Minutes since run start"
+        else:
+            x = df["episode"]
+            xlabel = "Episode"
+
+        plt.plot(x, y_ma, label=rid)
+
+    plt.title(f"Compare runs: {metric} (MA={ma}) | top_k={top_k} | x={xaxis}")
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.legend(fontsize=8)
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, f"compare_{metric}.png"))
+    plt.close()
+
+    # also export a leaderboard table for convenience
+    summary.to_csv(os.path.join(out_dir, "summary.csv"), index=False)
+    print("Saved compare plot + summary.csv to:", out_dir)
+    print(summary[["run_id", "episodes", "avg_lines", "max_lines", "avg_score", "max_score", "avg_reward"]].head(top_k).to_string(index=False))
+
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--ma", type=int, default=20, help="Moving average window")
-    parser.add_argument("--runs-root", type=str, default="logs/runs", help="Root folder that contains run_id folders")
+    parser.add_argument("--runs-root", type=str, default="backend/logs/runs", help="Root folder that contains run_id folders")
     parser.add_argument("--run-id", type=str, default="", help="Specific run_id to plot (folder name)")
     parser.add_argument("--latest", action="store_true", help="Plot the latest run_id")
     parser.add_argument("--summary", action="store_true", help="Print summary table of all runs")
+    parser.add_argument("--compare", action="store_true", help="Compare runs on one set of plots")
+    parser.add_argument("--metric", type=str, default="lines", choices=["lines", "reward", "score"], help="Metric for compare plot")
+    parser.add_argument("--top-k", type=int, default=5, help="Top K runs to include in compare plots")
+    parser.add_argument("--out", type=str, default="logs/compare", help="Output folder for compare plots and summary csv")
+    parser.add_argument("--export-summary", action="store_true", help="Write summary.csv into --out folder")
+    parser.add_argument("--xaxis", type=str, default="episode", choices=["episode", "time"], help="X-axis for plots")
+
     args = parser.parse_args()
 
     runs = list_runs(args.runs_root)
+    if args.export_summary:
+        ensure_dir(args.out)
+        summary = build_summary_table(args.runs_root)
+        if summary.empty:
+            print("No runs found to export.")
+            return
+        summary.to_csv(os.path.join(args.out, "summary.csv"), index=False)
+        print("Wrote:", os.path.join(args.out, "summary.csv"))
+
+    if args.compare:
+        plot_compare_runs(
+        runs_root=args.runs_root,
+        out_dir=args.out,
+        ma=args.ma,
+        metric=args.metric,
+        top_k=args.top_k,
+        xaxis=args.xaxis,
+        )
+        return
+
 
     if args.summary:
         if not runs:
@@ -150,7 +276,7 @@ def main():
             raise SystemExit("No run selected and logs/episodes.csv not found. Use --latest or --run-id.")
         df = load_episodes_csv(flat_path)
         out_dir = "logs/plots"
-        save_plots(df, out_dir, args.ma, label="(flat)")
+        save_plots(df, out_dir, args.ma, label="(flat)", xaxis=args.xaxis)
         print("Saved plots to:", out_dir)
         print("Summary:", summarize_run(df))
         return
@@ -161,7 +287,7 @@ def main():
 
     df = load_episodes_csv(ep_path)
     out_dir = os.path.join(args.runs_root, run_id, "plots")
-    save_plots(df, out_dir, args.ma, label=run_id)
+    save_plots(df, out_dir, args.ma, label=run_id, xaxis=args.xaxis)
 
     print("Saved plots to:", out_dir)
     print("Summary:", summarize_run(df))

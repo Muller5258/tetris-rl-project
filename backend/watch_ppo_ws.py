@@ -11,11 +11,16 @@ from tetris.constants import GRAVITY_FPS
 from csv_logger import CSVLogger
 from datetime import datetime
 
+MODEL_MAP = {
+    "phase2": "models/ppo_tetris_phase2",
+    "phase25": "models/ppo_tetris_phase25",
+    "latest": "models/ppo_tetris_phase2",  # you can repoint later
+}
+
 CLIENTS = set()
 CURRENT_FPS = GRAVITY_FPS
 
 async def handler(websocket):
-    global CURRENT_FPS
     CLIENTS.add(websocket)
     print("Client connected!")
     try:
@@ -25,14 +30,13 @@ async def handler(websocket):
             except:
                 continue
 
+            # config message from frontend
             if data.get("type") == "config":
-                fps = data.get("fps")
-                if isinstance(fps, (int, float)) and 1 <= fps <= 120:
-                    CURRENT_FPS = float(fps)
+                await broadcast({"type": "config_ack", "ok": True, "received": data})
+                websocket.config_message = data  # stash on socket object
     finally:
         CLIENTS.discard(websocket)
         print("Client disconnected!")
-
 
 async def broadcast(payload: dict):
     if not CLIENTS:
@@ -80,6 +84,9 @@ async def main():
     print("Loading model...")
     model = PPO.load(args.model)
     env = TetrisRLEnv(frames_per_step=6)
+    current_fps = GRAVITY_FPS
+    current_model_name = "phase2"
+
 
     print("WebSocket server running on ws://localhost:8765")
     async with websockets.serve(handler, "localhost", 8765):
@@ -90,6 +97,30 @@ async def main():
             ep_steps = 0
             step = 0
             while True:
+                # apply latest config from any client (last one wins)
+                for ws in list(CLIENTS):
+                    cfg = getattr(ws, "config_message", None)
+                    if cfg:
+                        # model swap
+                        if "model" in cfg:
+                            name = cfg["model"]
+                            if name in MODEL_MAP and name != current_model_name:
+                                print("Switching model to:", name)
+                                model = PPO.load(MODEL_MAP[name])
+                                current_model_name = name
+
+                        # fps change
+                        if "fps" in cfg:
+                            try:
+                                f = float(cfg["fps"])
+                                if f > 0:
+                                    current_fps = f
+                            except:
+                                pass
+
+                        # clear so we don't reapply every frame
+                        ws.config_message = None
+
                 # model chooses action
                 action, _ = model.predict(obs, deterministic=True)
                 obs, reward, done, truncated, _ = env.step(int(action))
@@ -146,7 +177,7 @@ async def main():
                     obs, _ = env.reset()
 
                 # real-time speed (roughly)
-                await asyncio.sleep(1.0 / max(1.0, CURRENT_FPS))
+                await asyncio.sleep(1.0 / current_fps)
 
         finally:
             steps_logger.close()

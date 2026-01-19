@@ -28,7 +28,8 @@ export default function App() {
 
   // FPS control (backend streaming rate)
   const [fps, setFps] = useState(30);
-
+  const [modelName, setModelName] = useState("phase2")
+  const [lastAck, setLastAck] = useState(null);
   // WebSocket ref
   const wsRef = useRef(null);
 
@@ -44,6 +45,19 @@ export default function App() {
   // Keep latest score/lines in refs so history writes don't use stale state
   const scoreRef = useRef(0);
   const linesRef = useRef(0);
+
+  const sendConfig = (nextModel, nextFps) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    ws.send(
+      JSON.stringify({
+        type: "config",
+        model: nextModel,
+        fps: nextFps,
+      })
+    );
+  };
 
   useEffect(() => {
     scoreRef.current = score;
@@ -68,6 +82,9 @@ export default function App() {
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      if (data.type === "config_ack") {
+          setLastAck(data);
+        }
 
       // ---- telemetry fields ----
       if (data.aiAction !== undefined) setAiAction(data.aiAction);
@@ -187,10 +204,33 @@ export default function App() {
 
   // send fps config whenever slider changes
   useEffect(() => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: "config", fps }));
-  }, [fps]);
+    const ws = new WebSocket("ws://localhost:8765");
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+        ws.send(
+          JSON.stringify({
+            type: "config",
+            fps: fps,
+            model: modelName,
+          })
+        );
+      };
+
+    return () => {
+      ws.close();
+      wsRef.current = null;
+    };
+  }, []);
+  useEffect(() => {
+  const ws = wsRef.current;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+  ws.send(JSON.stringify({
+    type: "config",
+    fps,
+  }));
+}, [fps]);
 
   return (
     <div style={{ fontFamily: "system-ui", padding: 16 }}>
@@ -244,6 +284,67 @@ export default function App() {
             />
             <div style={{ fontSize: 12, opacity: 0.65, marginTop: 6 }}>
               Lower FPS = smoother charts + less CPU. Higher FPS = more responsive board.
+            </div>
+          </div>
+          {/* Model selector */}
+          <div
+            style={{
+              border: "1px solid #ddd",
+              borderRadius: 10,
+              padding: 12,
+              background: "#fff",
+            }}
+          >
+            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>
+              Model: <b>{modelName}</b>
+            </div>
+
+            <select
+              value={modelName}
+              onChange={(e) => {
+                const m = e.target.value;
+                setModelName(m);
+                sendConfig(m, fps);
+              }}
+              style={{ width: "100%", padding: 8, borderRadius: 8 }}
+            >
+              <option value="phase2">phase2</option>
+              <option value="phase25">phase25</option>
+              <option value="latest">latest</option>
+            </select>
+
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button
+                onClick={() => sendConfig(modelName, fps)}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  cursor: "pointer",
+                  background: "#fff",
+                }}
+              >
+                Apply
+              </button>
+
+              <button
+                onClick={() => sendConfig("phase2", fps)}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  cursor: "pointer",
+                  background: "#fff",
+                }}
+              >
+                Reset to phase2
+              </button>
+            </div>
+
+            <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
+              {lastAck
+                ? `Backend ack: model=${lastAck.received?.model ?? "-"}, fps=${lastAck.received?.fps ?? "-"}`
+                : "No ack yet (change model/FPS to test)."}
             </div>
           </div>
 
