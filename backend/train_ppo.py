@@ -1,13 +1,16 @@
 import argparse
-from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv
-
+from sb3_contrib import MaskablePPO
 from tetris_rl_env import TetrisRLEnv
-
+from stable_baselines3.common.callbacks import CheckpointCallback
 
 def make_env(frames_per_step: int):
     return TetrisRLEnv(frames_per_step=frames_per_step)
 
+def make_env_fn(frames_per_step):
+    def _init():
+        return TetrisRLEnv(frames_per_step=frames_per_step)
+    return _init
 
 def main():
     parser = argparse.ArgumentParser()
@@ -17,25 +20,31 @@ def main():
     parser.add_argument("--model-out", type=str, default="backend/models/ppo_tetris.zip")
     args = parser.parse_args()
 
-    env = SubprocVecEnv([lambda: make_env(args.frames_per_step) for _ in range(args.n_envs)])
+    env = SubprocVecEnv([make_env_fn(args.frames_per_step) for _ in range(args.n_envs)])
 
-    model = PPO(
-         "MlpPolicy",
-          env,
-          verbose=1,
-          device="cuda",
-          n_steps=1024,
-          batch_size=256,
-          gamma=0.99,
-          gae_lambda=0.95,
-          n_epochs=10,
-          learning_rate=3e-4,
-          ent_coef=0.10,     # MORE exploration
-          clip_range=0.2,
-          )
+    model = MaskablePPO(
+        "MlpPolicy",
+        env,
+        verbose=1,
+        device="cuda",
+        learning_rate=3e-4,
+        n_steps=2048,
+        batch_size=256,
+        n_epochs=10,
+        gamma=0.997,
+        gae_lambda=0.95,
+        clip_range=0.2,
+        ent_coef=0.015,          # helps exploration early
+    )
+    checkpoint = CheckpointCallback(
+    save_freq=200_000,                 # every 200k steps
+    save_path="backend/models/checkpoints",
+    name_prefix="ppo_masked",
+    save_replay_buffer=False,
+    save_vecnormalize=False,
+)
 
-
-    model.learn(total_timesteps=args.timesteps)
+    model.learn(total_timesteps=args.timesteps, callback=checkpoint)
     model.save(args.model_out)
     print("Saved model to:", args.model_out)
 

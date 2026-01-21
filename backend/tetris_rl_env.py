@@ -47,8 +47,6 @@ def piece_mask_4x4(piece_id: int, rot: int):
         mask[r][c] = 1.0
     return mask.flatten()
 
-
-
 class TetrisRLEnv(gym.Env):
     """
     Gymnasium environment wrapping our TetrisEngine.
@@ -74,43 +72,40 @@ class TetrisRLEnv(gym.Env):
             dtype=np.float32
         )
 
+    def action_masks(self):
+        valid = self._valid_actions_set()
+        mask = np.zeros(self.action_space.n, dtype=bool)
 
-    def _valid_actions(self):
-        """
-        Returns a list of (rot, col) placements that are valid for the current piece
-        when dropped.
-        """
-        placements = []
+        for rot, col in valid:
+            a = rot * 10 + col
+            if 0 <= a < self.action_space.n:
+                mask[a] = True
+        return mask
+
+    def _valid_actions_set(self):
+        valid = set()
         piece_id = self.engine.state.active.piece_id
+        row = self.engine.state.active.row
+
+        from tetris.pieces import ActivePiece, TETROMINOES
 
         for rot in range(4):
-            # try all origin columns 0..COLS-1, engine will clamp/correct later
-            for col in range(COLS):
-                # Clone engine shallowly by making a fresh engine and copying state is hard,
-                # so instead we do a safe "try" using collision checks:
-                # We simulate the piece at (row=0, col=col) and see if any position is possible.
-                # We'll rely on engine's internal collision check by constructing ActivePiece.
-                from tetris.pieces import ActivePiece, TETROMINOES
-                shape = TETROMINOES[piece_id][rot]
+            shape = TETROMINOES[piece_id][rot]
 
-                # compute min/max occupied cols within 4x4
-                min_c = min(c for _, c in shape)
-                max_c = max(c for _, c in shape)
-                min_origin = -min_c
-                max_origin = (COLS - 1) - max_c
+            min_c = min(c for _, c in shape)
+            max_c = max(c for _, c in shape)
+            min_origin = -min_c
+            max_origin = (COLS - 1) - max_c
 
-                if col < min_origin or col > max_origin:
-                    continue
+            for col in range(max(0, min_origin), min(COLS - 1, max_origin) + 1):
+                test_piece = ActivePiece(piece_id=piece_id, rot=rot, row=row, col=col)
+                if not self.engine._collides(test_piece):
+                    valid.add((rot, col))
 
-                test_piece = ActivePiece(piece_id=piece_id, rot=rot, row=self.engine.state.active.row, col=col)
-                if not self.engine._collides(test_piece):  # uses engine collision
-                    placements.append((rot, col))
+        if not valid:
+            valid.add((self.engine.state.active.rot, self.engine.state.active.col))
 
-        if not placements:
-            placements.append((self.engine.state.active.rot, self.engine.state.active.col))
-        return placements
-
-
+        return valid
 
     def _obs(self):
         board = self.engine.to_render_board()
@@ -156,10 +151,17 @@ class TetrisRLEnv(gym.Env):
         heights_before = column_heights(board_before)
         maxh_before = max(heights_before) if heights_before else 0
         lines_before = self.engine.state.lines
+        bump_before = bumpiness(heights_before)
 
         # --- decode action 0..39 -> (rot, col) ---
-        rot = int(action) // 10   # 0..3
-        col = int(action) % 10    # 0..9
+        # --- decode action as index into valid placements ---
+        rot = int(action) // 10
+        col = int(action) % 10
+
+        valid = self._valid_actions_set()
+        if (rot, col) not in valid:
+            # deterministic fallback
+            rot, col = next(iter(valid))
 
         # --- apply placement ---
         self.engine.hard_drop_from(rot, col)
@@ -177,33 +179,43 @@ class TetrisRLEnv(gym.Env):
         bump_after = bumpiness(heights_after)
         maxh_after = max(heights_after) if heights_after else 0
         lines_after = self.engine.state.lines
+        delta_holes = holes_before - holes_after      # positive is good
+        delta_maxh = maxh_before - maxh_after         # positive is good
+        delta_bump = bump_before - bump_after         # positive is good
 
         cleared = lines_after - lines_before
 
        # --- reward shaping (phase 2: quality) ---
         reward = 0.0
-        reward += 0.2                # survival bonus
+        reward += 0.15                # survival bonus
         
         # multi-line clear bonus
         if cleared == 1:
-            reward += 8.0
+            reward += 7.0
         elif cleared == 2:
-            reward += 18.0
+            reward += 20.0
         elif cleared == 3:
-            reward += 30.0
+            reward += 35.0
         elif cleared >= 4:
-            reward += 45.0     
+            reward += 55.0     
+
+        # shaping based on improvement (THIS is the key)
+        reward += delta_holes * 0.05
+        reward += delta_maxh * 0.02
+        reward += delta_bump * 0.005
 
         # gentle quality shaping 
-        reward -= holes_after * 0.02
-        reward -= maxh_after * 0.01
-        reward -= bump_after * 0.001
+        reward -= holes_after * 0.001
+        reward -= maxh_after * 0.0001
+        reward -= bump_after * 0.0002
+        if maxh_after >= 16:
+            reward -= (maxh_after - 15) * 0.2
 
         terminated = self.engine.state.game_over
         truncated = False
 
         if terminated:
-            reward -= 10.0
+            reward -= 5.0
             
         return self._obs(), reward, terminated, truncated, {}
 

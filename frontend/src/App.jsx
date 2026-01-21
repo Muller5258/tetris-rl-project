@@ -310,9 +310,10 @@ export default function App() {
             >
               <option value="phase2">phase2</option>
               <option value="phase25">phase25</option>
+              <option value="masked_v5">masked_v5</option>
+              <option value="masked_v6">masked_v6</option>
               <option value="latest">latest</option>
             </select>
-
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
               <button
                 onClick={() => sendConfig(modelName, fps)}

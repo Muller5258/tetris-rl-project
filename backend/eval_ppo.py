@@ -1,9 +1,8 @@
 import argparse
 import numpy as np
-from stable_baselines3 import PPO
-
+from sb3_contrib import MaskablePPO
 from tetris_rl_env import TetrisRLEnv
-
+from stable_baselines3 import PPO
 
 def run_one(model: PPO, deterministic: bool) -> tuple[int, float, int, int]:
     env = TetrisRLEnv(frames_per_step=1)
@@ -33,7 +32,12 @@ def main():
     parser.add_argument("--episodes", type=int, default=10)
     args = parser.parse_args()
 
-    model = PPO.load(args.model)
+    try:
+        model = MaskablePPO.load(args.model)
+        print("Loaded as MaskablePPO")
+    except Exception:
+        model = PPO.load(args.model)
+        print("Loaded as PPO")
 
     steps_list = []
     reward_list = []

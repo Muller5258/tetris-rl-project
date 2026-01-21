@@ -10,15 +10,24 @@ from tetris_rl_env import TetrisRLEnv
 from tetris.constants import GRAVITY_FPS
 from csv_logger import CSVLogger
 from datetime import datetime
+from sb3_contrib import MaskablePPO
 
 MODEL_MAP = {
+    "latest": "models/ppo_masked_v6",  # or wherever latest points
     "phase2": "models/ppo_tetris_phase2",
     "phase25": "models/ppo_tetris_phase25",
-    "latest": "models/ppo_tetris_phase2",  # you can repoint later
+    "masked_v6": "models/ppo_masked_v6",
+    "masked_v5": "models/ppo_masked_v5",
 }
 
 CLIENTS = set()
 CURRENT_FPS = GRAVITY_FPS
+
+def load_any_model(path: str):
+    try:
+        return MaskablePPO.load(path)
+    except Exception:
+        return PPO.load(path)
 
 async def handler(websocket):
     CLIENTS.add(websocket)
@@ -82,7 +91,7 @@ async def main():
     episodes_logger.open()
 
     print("Loading model...")
-    model = PPO.load(args.model)
+    model = load_any_model(args.model)
     env = TetrisRLEnv(frames_per_step=6)
     current_fps = GRAVITY_FPS
     current_model_name = "phase2"
@@ -106,7 +115,7 @@ async def main():
                             name = cfg["model"]
                             if name in MODEL_MAP and name != current_model_name:
                                 print("Switching model to:", name)
-                                model = PPO.load(MODEL_MAP[name])
+                                model = load_any_model(MODEL_MAP[name])
                                 current_model_name = name
 
                         # fps change
