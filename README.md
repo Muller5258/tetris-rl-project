@@ -22,7 +22,7 @@ The project includes:
 - Trained models included in repo
 
 ### Windows Quick Start
-```powershell
+
 .\run_demo.ps1
 Then open your browser at:
 http://localhost:5173
