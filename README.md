@@ -49,7 +49,7 @@ Final Model Performance (masked_v6, 200 episodes):
 - Max score: 3780  
 
 Train a model:
-```powershell
+
 python backend/train_ppo.py --timesteps 2000000 --model-out backend/models/my_model
 
 Evaluate:
