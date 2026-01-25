@@ -68,7 +68,8 @@ export default function App() {
   }, [lines]);
 
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:8765");
+    const wsUrl = `ws://${window.location.hostname}:8765`;
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -271,7 +272,7 @@ export default function App() {
               background: "#fff",
             }}
           >
-            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>
+            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6,color: "#000000" }}>
               Stream FPS: <b>{fps}</b>
             </div>
             <input
@@ -282,7 +283,7 @@ export default function App() {
               onChange={(e) => setFps(Number(e.target.value))}
               style={{ width: "100%" }}
             />
-            <div style={{ fontSize: 12, opacity: 0.65, marginTop: 6 }}>
+            <div style={{ fontSize: 12, opacity: 0.65, marginTop: 6, color: "#000000" }}>
               Lower FPS = smoother charts + less CPU. Higher FPS = more responsive board.
             </div>
           </div>
@@ -306,7 +307,7 @@ export default function App() {
                 setModelName(m);
                 sendConfig(m, fps);
               }}
-              style={{ width: "100%", padding: 8, borderRadius: 8 }}
+              style={{ width: "100%", padding: 8, borderRadius: 8, fontSize: 16 }}
             >
               <option value="phase2">phase2</option>
               <option value="phase25">phase25</option>
@@ -322,7 +323,7 @@ export default function App() {
                   borderRadius: 8,
                   border: "1px solid #ddd",
                   cursor: "pointer",
-                  background: "#fff",
+                  background: "#424242",
                 }}
               >
                 Apply
@@ -335,7 +336,7 @@ export default function App() {
                   borderRadius: 8,
                   border: "1px solid #ddd",
                   cursor: "pointer",
-                  background: "#fff",
+                  background: "#424242",
                 }}
               >
                 Reset to phase2

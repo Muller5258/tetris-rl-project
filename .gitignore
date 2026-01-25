@@ -3,9 +3,6 @@
 __pycache__/
 *.pyc
 
-# RL models
-backend/models/*.zip
-
 # Node
 frontend/node_modules/
 frontend/dist/
@@ -18,4 +15,15 @@ Thumbs.db
 backend/logs/
 *.csv
 
-backend/models/
+# Ignore all unwanted models
+backend/models/checkpoints/
+backend/models/*_test.zip
+backend/models/ppo_masked_v1.zip
+backend/models/ppo_masked_v2.zip
+backend/models/ppo_masked_v2_test.zip
+backend/models/ppo_masked_v3_test.zip
+backend/models/ppo_masked_v4_test.zip
+backend/models/ppo_tetris_phase25_checkpoint.zip
+backend/models/ppo_tetris_phase2_*.zip
+backend/models/ppo_tetris.zip
+backend/models/dqn_tetris.zip

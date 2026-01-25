@@ -1,4 +1,5 @@
 import asyncio
+from html import parser
 import json
 import websockets
 import argparse
@@ -66,6 +67,8 @@ async def main():
     parser.add_argument("--log-steps", type=str, default="logs/steps.csv")
     parser.add_argument("--log-episodes", type=str, default="logs/episodes.csv")
     parser.add_argument("--flush-every", type=int, default=200)
+    parser.add_argument("--host", type=str, default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = os.path.join("logs", "runs", run_id)
@@ -98,7 +101,8 @@ async def main():
 
 
     print("WebSocket server running on ws://localhost:8765")
-    async with websockets.serve(handler, "localhost", 8765):
+    async with websockets.serve(handler, args.host, args.port):
+        print(f"WebSocket server running on ws://{args.host}:{args.port}")
         try:
             obs, _ = env.reset()
             episode = 0
